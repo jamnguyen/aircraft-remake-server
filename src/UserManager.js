@@ -1,5 +1,5 @@
 export default class UserManager {
-  limit = 2;
+  limit = 10;
   db;
 
   constructor() {

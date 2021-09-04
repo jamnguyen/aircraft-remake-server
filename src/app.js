@@ -30,8 +30,11 @@ const db = new UserManager();
 // ----------------------------------------------
 // AUTH
 // ----------------------------------------------
-app.post('/login', (req, res) => {
-  if (!req.body || !req.body.username) {
+app.get('/verify-username/:username', (req, res) => {
+  const username = req.params.username;
+
+  // Verify param
+  if (!username) {
     res.status(400).json({
       message: 'Username required!'
     });
@@ -39,12 +42,8 @@ app.post('/login', (req, res) => {
     return;
   }
 
-  const { username } = req.body;
-  const id = uuid();
-  const slug = getSlugFromUsername(username);
-
   // Check exist
-  if (db.hasSlug(slug)) {
+  if (db.hasSlug(getSlugFromUsername(username))) {
     res.status(400).json({
       message: 'Username exists!',
     });
@@ -52,88 +51,8 @@ app.post('/login', (req, res) => {
     return;
   }
 
-  // Check limit
-  if (db.isExceeded()) {
-    res.status(400).json({
-      message: 'So sad, the airport is full at the moment, please come back later. :(',
-    });
-    
-    return;
-  }
-
-  const user = { id, username, slug, status: Status.PENDING };
-  db.add(id, user);
   res.json({
-    message: 'Log in success!',
-    user: { id, username },
-  });
-});
-
-app.post('/logout', (req, res) => {
-  if (!req.body || !req.body.id) {
-    res.status(400).json({
-      message: 'ID required!'
-    });
-
-    return;
-  }
-
-  const { id } = req.body;
-
-  if (!db.hasId(id)) {
-    res.status(400).json({
-      message: 'User does not exist.'
-    });
-
-    return;
-  }
-
-  const loggedOutUser = db.getUser(id);
-  delete loggedOutUser.status;
-  db.delete(id);
-
-  res.json({
-    message: 'Log out success!',
-    user: loggedOutUser,
-  });
-});
-
-app.patch('/update/:id', (req, res) => {
-  const { id } = req.params;
-
-  if (!id) {
-    res.status(400).json({
-      message: 'ID required!'
-    });
-
-    return;
-  }
-
-  if (!req.body) {
-    res.status(400).json({
-      message: 'Body required!'
-    });
-
-    return;
-  }
-
-  if (!db.hasId(id)) {
-    res.status(400).json({
-      message: 'User does not exist!'
-    });
-
-    return;
-  }
-
-  const body = req.body;
-  if (req.body.username) {
-    body.slug = getSlugFromUsername(req.body.username);
-  }
-
-  db.update(id, req.body);
-  res.json({
-    message: 'Update success!',
-    user: db.getUser(id),
+    message: 'Username is good to go!'
   });
 });
 
@@ -144,61 +63,67 @@ app.get('/', (req, res) => {
   res.json(`Hello from Jam. :) This is Aircraft Remake server.`);
 });
 
-app.get('/users', (req, res) => {
-  res.json({
-    users: db.getArray()
-  });
-});
-
 // ----------------------------------------------
 // IO
 // ----------------------------------------------
 io.on('connection', (socket) => {
-  // On user handshake
-  db.update(socket.handshake.query.id, {
-    socketId:  socket.id,
-    status: Status.AVAILABLE
-  });
+  // Add new user
+  const { username } = socket.handshake.query;
+  const id = socket.id;
+  const slug = getSlugFromUsername(username);
+  const user = { id, username, slug, status: Status.PENDING };
+  db.add(id, user);
 
-  const currentUser = db.getUser(socket.handshake.query.id);
-  const availables = db.getArray().filter(user => user.status === Status.AVAILABLE);
-
-  // Send to connected user id and available users list
-  io.to(`${socket.id}`).emit(
-    Message.USER_CONNECTED,
-    {
-      user: currentUser,
-      availables,
-    }
+  io.to(socket.id).emit(
+    Message.CONNECT_SUCCESS,
+    user
   );
 
-  // Send to other users available users list
-  socket.broadcast.emit(
-    Message.AVAILABLE_LIST,
-    availables
-  );
-
-  // Request a game with user has opponentId
-  socket.on(MESSAGE.US_CHALLENGE, (opponentId) => {
-    const challenger = users.find(user => user.id === socket.id);
-    const opponent = users.find(user => user.id === opponentId);
-
-    if (challenger) {
-      challenger.status = opponentId;
+  socket.on(Message.USER_CHANGE, (newData) => {
+    const payload = newData;
+    if (newData.username) {
+      payload.slug = getSlugFromUsername(newData.username);
     }
-    if (opponent) {
-      opponent.status = challenger.id;
-    }
+    db.update(id, payload);
 
-    io.to(`${opponentId}`).emit(
-      MESSAGE.US_CHALLENGE,
-      challenger
+    const availables = db.getArray().filter(user =>
+      user.status === Status.AVAILABLE
     );
 
-    io.emit(MESSAGE.US_UPDATE_USER_LIST, users.filter(user => user.status === STATUS.AVAILABLE));
+    // Send to connected user id and available users list
+    io.to(socket.id).emit(
+      Message.AVAILABLE_LIST,
+      availables
+    );
+
+    // Send to other users available users list
+    socket.broadcast.emit(
+      Message.AVAILABLE_LIST,
+      availables
+    );
   });
+
+  // Request a game with user has opponentId
+  // socket.on(MESSAGE.US_CHALLENGE, (opponentId) => {
+  //   const challenger = users.find(user => user.id === socket.id);
+  //   const opponent = users.find(user => user.id === opponentId);
+
+  //   if (challenger) {
+  //     challenger.status = opponentId;
+  //   }
+  //   if (opponent) {
+  //     opponent.status = challenger.id;
+  //   }
+
+  //   io.to(`${opponentId}`).emit(
+  //     MESSAGE.US_CHALLENGE,
+  //     challenger
+  //   );
+
+  //   io.emit(MESSAGE.US_UPDATE_USER_LIST, users.filter(user => user.status === STATUS.AVAILABLE));
+  // });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Aircraft Server is listening at port ${PORT}...`);
 });
