@@ -1,8 +1,8 @@
 const Status = {
-  PENDING: 'pending',
   AVAILABLE: 'available',
-  CHALLENGING: 'challenging',
-  IN_GAME: 'in_game'
+  BATTLE_REQUEST: 'battle_request',
+  BOARD_SETUP: 'board_setup',
+  PENDING: 'pending',
 };
 
 export default Status;

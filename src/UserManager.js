@@ -1,3 +1,6 @@
+import Status from "./constants/statuses.js";
+import { getSlugFromUsername } from "./utils.js";
+
 export default class UserManager {
   limit = 10;
   db;
@@ -10,7 +13,8 @@ export default class UserManager {
     return !!this.db[id];
   }
 
-  hasSlug(slug) {
+  hasUsername(username) {
+    const slug = getSlugFromUsername(username);
     return Object.values(this.db).some(item => item.slug === slug);
   }
 
@@ -19,11 +23,28 @@ export default class UserManager {
   }
 
   add(id, payload) {
-    this.db[id] = payload;
+    return this.db[id] = {
+      status: Status.PENDING,
+      opponentId: null,
+      ...payload,
+      ...(
+        payload.username
+        ? { slug: getSlugFromUsername(payload.username) }
+        : {}
+      )
+    };
   }
 
   update(id, payload) {
-    this.db[id] = { ...this.db[id], ...payload };
+    return this.db[id] = {
+      ...this.db[id],
+      ...payload,
+      ...(
+        payload.username
+        ? { slug: getSlugFromUsername(payload.username) }
+        : {}
+      )
+    };
   }
 
   delete(id) {
